@@ -1,0 +1,9 @@
+[package]
+name = "setup-builder"
+version = "0.1.0"
+authors = ["Jadon Fowler <j@jadon.io>"]
+edition = "2018"
+
+[dependencies]
+yaml-rust = "0.4"
+fs_extra = "1.1.0"
