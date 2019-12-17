@@ -57,17 +57,39 @@ impl Realm {
         format!("out/{}", self.id)
     }
 
-    pub fn build_files(self) {
-        self.gamemode.copy_server_files(&self);
-        self.gamemode.copy_plugins(&self);
+    pub fn copy_realm_files(&self) {
+        let paths = fs::read_dir(format!("realm/{}/", self.id)).unwrap();
+        for path in paths {
+            let path = path.expect("error reading server path").path();
+            if path.is_file() {
+                fs::copy(path.to_str().unwrap(), format!("{}/{}", self.output_folder(), path.file_name().unwrap().to_str().unwrap()))
+                    .expect("failed to copy server files");
+            } else if path.is_dir() {
+                let mut options = CopyOptions::new();
+                options.overwrite = true;
+                fs_extra::dir::copy(path, self.output_folder(), &options).expect("failed to copy gamemode files");
+            }
+        }
+    }
 
+    pub fn write_eula(&self) {
         // yes we accept the eula
         fs::write(format!("{}/eula.txt", self.output_folder()), "eula=true\n").expect("unable to accept eula")
+    }
+
+    pub fn build_files(self) {
+        fs::create_dir_all(format!("{}/plugins/", self.output_folder())).expect("failed to create plugin output directory");
+        self.gamemode.copy_server_files(&self);
+        self.gamemode.copy_plugins(&self);
+        self.gamemode.copy_gamemode_files(&self);
+        self.copy_realm_files();
+        self.write_eula();
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct GameMode {
+    id: String,
     name: String,
     server: String,
     version: String,
@@ -77,10 +99,10 @@ struct GameMode {
 
 impl GameMode {
     pub fn read(gamemode_name: String) -> GameMode {
-        GameMode::new(&read_yaml(format!("gamemode/{}.yml", gamemode_name))[0])
+        GameMode::new(gamemode_name.clone(), &read_yaml(format!("gamemode/{}.yml", gamemode_name))[0])
     }
 
-    pub fn new(yaml: &Yaml) -> GameMode {
+    pub fn new(id: String, yaml: &Yaml) -> GameMode {
         let name = yaml["name"].as_str().expect("expected name field in gamemode").to_string();
         let server = yaml["server"].as_str().expect("expected server field in gamemode").to_string();
         let version = yaml["version"].as_str().expect("expected version field in gamemode").to_string();
@@ -96,11 +118,27 @@ impl GameMode {
         }
 
         GameMode {
+            id,
             name,
             server,
             version,
             backup_versions,
             plugins,
+        }
+    }
+
+    pub fn copy_gamemode_files(&self, realm: &Realm) {
+        let paths = fs::read_dir(format!("gamemode/{}/", self.id)).unwrap();
+        for path in paths {
+            let path = path.expect("error reading server path").path();
+            if path.is_file() {
+                fs::copy(path.to_str().unwrap(), format!("{}/{}", realm.output_folder(), path.file_name().unwrap().to_str().unwrap()))
+                    .expect("failed to copy server files");
+            } else if path.is_dir() {
+                let mut options = CopyOptions::new();
+                options.overwrite = true;
+                fs_extra::dir::copy(path, realm.output_folder(), &options).expect("failed to copy gamemode files");
+            }
         }
     }
 
@@ -129,6 +167,7 @@ impl GameMode {
         }
     }
 
+    /// Collect all of the plugin paths for this GameMode
     pub fn plugin_paths(&self) -> Vec<((String, Option<String>), String)> {
         let mut paths = Vec::with_capacity(self.plugins.len());
         for plugin in self.plugins.iter() {
@@ -137,6 +176,9 @@ impl GameMode {
         paths
     }
 
+    /// Search for a suitable version of the plugin based on the version of the GameMode.
+    /// If there is a folder containing files needed for the plugin, that is returned in
+    /// the inner Option: Option<(JarPath, Option<FolderPath>)>
     pub fn plugin_path(&self, name: String) -> Option<(String, Option<String>)> {
         let mut versions = Vec::with_capacity(self.backup_versions.len() + 1);
         versions.push(self.version.clone());
