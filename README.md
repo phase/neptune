@@ -1,4 +1,4 @@
-# setup-builder
+# neptune
 
 This tool builds server setups from yaml files. It was
 inspired by the systems used at TheArchon and Mineteria,

@@ -1,5 +1,5 @@
 [package]
-name = "setup-builder"
+name = "neptune"
 version = "0.1.0"
 authors = ["Jadon Fowler <j@jadon.io>"]
 edition = "2018"

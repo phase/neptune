@@ -4,8 +4,8 @@ extern crate yaml_rust;
 use std::{env, fs, io};
 use std::path::Path;
 
-use fs_extra::dir::CopyOptions;
 use yaml_rust::{Yaml, YamlLoader};
+
 use crate::realm::Realm;
 
 mod realm;

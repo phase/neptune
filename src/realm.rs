@@ -38,7 +38,7 @@ impl Realm {
     }
 
     pub fn copy_realm_files(&self) {
-        let result = fs::read_dir(format!("realm/{}/", self.id));
+        let result = fs::read_dir(format!("{}/{}/", self.content_folder(), self.id));
         // this directory is optional, don't panic if we can't find it
         if let Err(_) = result { return; }
 

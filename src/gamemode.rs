@@ -8,7 +8,7 @@ use crate::read_yaml;
 use crate::realm::Realm;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) struct GameMode {
+pub struct GameMode {
     id: String,
     name: String,
     server: String,
