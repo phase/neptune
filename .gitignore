@@ -1,2 +1,9 @@
 /target
 **/*.rs.bk
+
+# output and test files
+out/
+gamemode/
+realm/
+server/
+plugins/
