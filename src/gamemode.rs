@@ -6,6 +6,7 @@ use yaml_rust::Yaml;
 
 use crate::read_yaml;
 use crate::realm::Realm;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct GameMode {
@@ -15,6 +16,7 @@ pub struct GameMode {
     version: String,
     backup_versions: Vec<String>,
     plugins: Vec<String>,
+    attributes: HashMap<String, String>,
 }
 
 impl GameMode {
@@ -37,6 +39,15 @@ impl GameMode {
             plugins.push(x.as_str().expect("expected string in plugins list").to_string());
         }
 
+        let mut attributes = HashMap::new();
+        if let Some(hash) = yaml["attributes"].as_hash() {
+            for (key, value) in hash.iter() {
+                let key = key.as_str().unwrap().to_string();
+                let value = value.as_str().unwrap().to_string();
+                attributes.insert(key, value);
+            }
+        }
+
         GameMode {
             id,
             name,
@@ -44,6 +55,7 @@ impl GameMode {
             version,
             backup_versions,
             plugins,
+            attributes,
         }
     }
 
@@ -119,7 +131,7 @@ impl GameMode {
             }
         }
         let jar_path = format!("plugins/{}.jar", name).to_string();
-        let folder_path = format!("plugins/{}/{}/", self.version, name).to_string();
+        let folder_path = format!("plugins/{}/", name).to_string();
         let folder = if Path::new(&folder_path).is_dir() { Some(folder_path) } else { None };
 
         let path = Path::new(&jar_path);
@@ -127,5 +139,17 @@ impl GameMode {
             return Some((jar_path, folder));
         }
         return None;
+    }
+
+    pub fn get_replacements(&self) -> HashMap<String, String> {
+        let mut replacements = HashMap::new();
+        replacements.insert("gamemode_id".to_string(), self.id.clone());
+        replacements.insert("gamemode_name".to_string(), self.name.clone());
+        replacements.insert("gamemode_server".to_string(), self.server.clone());
+        replacements.insert("gamemode_version".to_string(), self.version.clone());
+        for (key, value) in self.attributes.iter() {
+            replacements.insert(format!("gamemode_{}", key.clone()), value.clone());
+        }
+        replacements
     }
 }
