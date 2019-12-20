@@ -1,14 +1,15 @@
+use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
 
 use fs_extra::dir::CopyOptions;
 use yaml_rust::Yaml;
 
-use crate::gamemode::GameMode;
 use crate::{read_yaml, visit_dirs};
-use std::collections::HashMap;
-use std::fs::File;
-use std::path::Path;
-use std::io::{Read, Write};
+use crate::gamemode::GameMode;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Realm {
@@ -76,39 +77,47 @@ impl Realm {
         fs::write(format!("{}/eula.txt", self.output_folder()), "eula=true\n").expect("unable to accept eula")
     }
 
+    pub fn get_replacements(&self) -> HashMap<String, String> {
+        let mut replacements = self.gamemode.get_replacements();
+        for (key, value) in self.attributes.iter() {
+            replacements.insert(key.clone(), value.clone());
+        }
+        replacements.insert("id".to_string(), self.id.clone());
+        replacements.insert("name".to_string(), self.name.clone());
+        replacements
+    }
+
+    pub fn make_replacements_in_file<S: AsRef<OsStr> + ?Sized>(&self, path: &S, replacements: HashMap<String, String>) {
+        // open the file and read to a buffer
+        let file_path = Path::new(path);
+        let mut src = File::open(&file_path).unwrap();
+        let mut data = String::new();
+        src.read_to_string(&mut data).unwrap();
+        drop(src);  // Close the file early
+
+        // make replacements
+        for (from, to) in replacements {
+            let from = format!("$$REALM_{}$$", from.to_ascii_uppercase().replace("-", "_"));
+            data = data.replace(&from, &to);
+        }
+
+        let mut dest = File::create(&file_path).unwrap();
+        dest.write(data.as_bytes()).unwrap();
+    }
+
     pub fn make_replacements(&self) {
         visit_dirs(self.output_folder().as_ref(), &|path| {
             if path.ends_with(".yml")
                 || path.ends_with(".yaml")
                 || path.ends_with(".json")
-                || path.ends_with(".txt") {
-                let mut replacements = self.gamemode.get_replacements();
-                for (key, value) in self.attributes.iter() {
-                    replacements.insert(key.clone(), value.clone());
-                }
-                replacements.insert("id".to_string(), self.id.clone());
-                replacements.insert("name".to_string(), self.name.clone());
-
-                // open the file and read to a buffer
-                let file_path = Path::new(path);
-                let mut src = File::open(&file_path).unwrap();
-                let mut data = String::new();
-                src.read_to_string(&mut data).unwrap();
-                drop(src);  // Close the file early
-
-                // make replacements
-                for (from, to) in replacements {
-                    let from = format!("$$REALM_{}$$", from.to_ascii_uppercase().replace("-", "_"));
-                    data = data.replace(&from, &to);
-                }
-
-                let mut dest = File::create(&file_path).unwrap();
-                dest.write(data.as_bytes()).unwrap();
+                || path.ends_with(".txt")
+                || path.ends_with(".sh") {
+                self.make_replacements_in_file(path, self.get_replacements());
             }
         }).unwrap();
     }
 
-    pub fn build_files(self) {
+    pub fn build_files(&self) {
         fs::create_dir_all(format!("{}/plugins/", self.output_folder())).expect("failed to create plugin output directory");
         self.gamemode.copy_server_files(&self);
         self.gamemode.copy_plugins(&self);
