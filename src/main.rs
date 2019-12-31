@@ -37,12 +37,14 @@ fn main() {
             let realm_name = args.get(2).expect(&usage).clone();
             let run_dir = args.get(3).expect(&usage).clone();
             let realm_name_copy = realm_name.clone();
+            let run_dir_copy = run_dir.clone();
+            let plugin_dir = format!("{}/plugins/", run_dir);
             thread::spawn(move || {
                 loop {
                     let mut lock = GEN_LOCK.lock().unwrap();
                     if !*lock {
                         *lock = true;
-                        let _ = generate_realm(realm_name_copy.clone());
+                        let _ = generate_realm_run_files(realm_name_copy.clone(), &run_dir_copy.clone(), &plugin_dir);
                         *lock = false;
                     }
                     drop(lock);
@@ -65,44 +67,7 @@ pub fn run_server(realm_name: String, run_dir: String) -> ! {
         let mut lock = GEN_LOCK.lock().unwrap();
         if !*lock {
             *lock = true;
-            let (realm, output_dir) = generate_realm(realm_name.clone());
-
-            println!("Removing old jars from run directory.");
-            let result = fs::read_dir(&plugin_dir);
-            if let Ok(dir) = result {
-                for entry in dir {
-                    let entry = entry.expect("couldn't read file in plugin directory");
-                    if entry.path().to_str().unwrap().ends_with(".jar") {
-                        println!("- {}", entry.path().to_str().unwrap());
-                        fs::remove_file(entry.path()).unwrap();
-                    }
-                }
-            }
-
-            println!("Copying generated realm files to run directory.");
-            for entry in fs::read_dir(&output_dir).unwrap() {
-                let entry = entry.expect("couldn't read output file");
-                let file_type = entry.file_type().expect("failed to get filetype");
-                if file_type.is_dir() {
-                    let mut options = CopyOptions::new();
-                    options.overwrite = true;
-                    fs_extra::dir::copy(entry.path(), &run_dir, &options)
-                        .expect("failed to copy folder from output directory to run directory");
-                } else if file_type.is_file() {
-                    fs::copy(entry.path(), &format!("{}/{}", &run_dir, entry.file_name().to_str().unwrap()))
-                        .expect("failed to copy file from output directory to run directory");
-                }
-            };
-
-            println!("Generating start script.");
-            let mut replacements = HashMap::new();
-            let buf = fs::canonicalize(&PathBuf::from(&run_dir)).unwrap();
-            let run_dir_full = buf.to_str().unwrap();
-            let server_jar_path = format!("{}/server.jar", run_dir_full);
-            let start_script_path = format!("{}/start.sh", run_dir_full);
-            replacements.insert("SERVER_JAR".to_string(), server_jar_path);
-            realm.make_replacements_in_file(&start_script_path, replacements);
-            drop(realm);
+            let (run_dir_full, start_script_path) = generate_realm_run_files(realm_name.clone(), &run_dir, &plugin_dir);
 
             *lock = false;
             drop(lock);
@@ -127,6 +92,41 @@ pub fn run_server(realm_name: String, run_dir: String) -> ! {
     }
 }
 
+fn generate_realm_run_files(realm_name: String, run_dir: &String, plugin_dir: &String) -> (String, String) {
+    let (realm, output_dir) = generate_realm(realm_name);
+    let result = fs::read_dir(&plugin_dir);
+    if let Ok(dir) = result {
+        for entry in dir {
+            let entry = entry.expect("couldn't read file in plugin directory");
+            if entry.path().to_str().unwrap().ends_with(".jar") {
+                fs::remove_file(entry.path()).expect("couldn't remove jar file in plugin directory");
+            }
+        }
+    }
+    for entry in fs::read_dir(&output_dir).unwrap() {
+        let entry = entry.expect("couldn't read output file");
+        let file_type = entry.file_type().expect("failed to get filetype");
+        if file_type.is_dir() {
+            let mut options = CopyOptions::new();
+            options.overwrite = true;
+            fs_extra::dir::copy(entry.path(), &run_dir, &options)
+                .expect("failed to copy folder from output directory to run directory");
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), &format!("{}/{}", &run_dir, entry.file_name().to_str().unwrap()))
+                .expect("failed to copy file from output directory to run directory");
+        }
+    };
+    let mut replacements = HashMap::new();
+    let buf = fs::canonicalize(&PathBuf::from(&run_dir)).unwrap();
+    let run_dir_full = buf.to_str().unwrap();
+    let server_jar_path = format!("{}/server.jar", run_dir_full);
+    let start_script_path = format!("{}/start.sh", run_dir_full);
+    replacements.insert("SERVER_JAR".to_string(), server_jar_path);
+    realm.make_replacements_in_file(&start_script_path, replacements);
+    drop(realm);
+    (run_dir_full.to_string(), start_script_path)
+}
+
 fn fail_with_usage(usage: &String) -> ! {
     eprintln!("{}", usage);
     exit(1);
@@ -135,14 +135,9 @@ fn fail_with_usage(usage: &String) -> ! {
 fn generate_realm(realm_name: String) -> (Realm, String) {
     let realm = Realm::read(realm_name);
     let output_directory = realm.output_folder();
-//    println!("{:#?}\n", realm);
     realm.build_files();
 
     println!("Generated realm files.");
-//    println!("Created files:");
-//    visit_dirs(output_directory.as_ref(), &|path| {
-//        println!("- {}", path);
-//    }).unwrap();
     (realm, output_directory)
 }
 
